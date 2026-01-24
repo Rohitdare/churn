@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List
 import pandas as pd
 import joblib
+import shap  # <--- NEW: Import SHAP
 
 from .predict import predict_churn
 
@@ -13,6 +14,11 @@ model = joblib.load("models/churn_model.pkl")
 
 background = pd.read_csv("data/processed/account_features.csv")
 background_X = background.drop(columns=["account_id", "churn_flag"]).astype(float)
+
+# -------- INITIALIZE SHAP EXPLAINER --------
+# <--- NEW: Define explainer so the risk endpoint doesn't crash
+# We use a generic Explainer which auto-selects the best method (Tree, Linear, etc.)
+explainer = shap.Explainer(model, background_X) 
 
 # -------- SCHEMA --------
 class AccountFeatures(BaseModel):
@@ -69,3 +75,43 @@ def metrics():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/customers/risk")
+def customer_risk_queue():
+    df = background.copy()
+
+    X = df.drop(columns=["account_id", "churn_flag"]).astype(float)
+    probs = model.predict_proba(X)[:, 1]
+
+    df["churn_probability"] = probs
+    df["risk_level"] = df["churn_probability"].apply(
+        lambda x: "High Risk" if x >= 0.7 else "Medium Risk" if x >= 0.4 else "Low Risk"
+    )
+
+    # SHAP explanations
+    # This now works because 'explainer' is defined at the top
+    shap_values = explainer(X)
+
+    def top_reasons(idx):
+        # Handle SHAP values structure (checking if it returns object or array)
+        if hasattr(shap_values, 'values'):
+            impacts = shap_values.values[idx]
+        else:
+            impacts = shap_values[idx]
+            
+        features = X.columns
+        top_idx = impacts.argsort()[::-1][:3]
+        return [features[i] for i in top_idx]
+
+    df["top_reasons"] = [
+        top_reasons(i) for i in range(len(df))
+    ]
+
+    return df[[
+        "account_id",
+        "churn_probability",
+        "risk_level",
+        "is_trial",
+        "account_age_days",
+        "top_reasons"
+    ]].sort_values(by="churn_probability", ascending=False).to_dict(orient="records")

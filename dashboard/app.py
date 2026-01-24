@@ -1,81 +1,103 @@
 import streamlit as st
+import pandas as pd
 import requests
 
-API_URL = "http://127.0.0.1:8000"
-st.set_page_config("SaaS Churn Intelligence", layout="wide")
+# 1. Define where the API lives
+API_URL = "http://localhost:8000"
 
-st.title("📊 SaaS Churn Intelligence Dashboard")
+# --- Header ---
+st.title("🚨 Customer Risk Queue")
 
-# ---------------- METRICS ----------------
-metrics = requests.get(f"{API_URL}/metrics").json()
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Avg Churn Probability", f"{metrics['avg_churn_probability']:.2f}")
-c2.metric("High Risk Customers", metrics["high_risk_customers"])
-c3.metric("Medium Risk Customers", metrics["medium_risk_customers"])
-
-# ---------------- INPUT ----------------
-st.header("🔍 Analyze a Customer")
-
-seats = st.slider("Team size", 1, 100, 10)
-is_trial = st.checkbox("Trial user")
-age = st.slider("Account age (days)", 1, 1000, 90)
-country = st.selectbox("Country", ["US","IN","UK","CA","DE","FR"])
-plan = st.selectbox("Plan", ["Basic","Pro","Enterprise"])
-industry = st.selectbox("Industry", ["EdTech","FinTech","DevTools","HealthTech"])
-
-payload = {
-    "seats": seats,
-    "is_trial": int(is_trial),
-    "account_age_days": age,
-
-    "industry_DevTools": industry=="DevTools",
-    "industry_EdTech": industry=="EdTech",
-    "industry_FinTech": industry=="FinTech",
-    "industry_HealthTech": industry=="HealthTech",
-
-    "country_US": country=="US",
-    "country_IN": country=="IN",
-    "country_UK": country=="UK",
-    "country_CA": country=="CA",
-    "country_DE": country=="DE",
-    "country_FR": country=="FR",
-
-    "plan_tier_Enterprise": plan=="Enterprise",
-    "plan_tier_Pro": plan=="Pro",
-
-    "referral_source_organic": True,
-    "referral_source_event": False,
-    "referral_source_partner": False,
-    "referral_source_other": False
-}
-
-# ---------------- PREDICT ----------------
-res = None
-
-if st.button("Predict Churn Risk"):
-    res = requests.post(f"{API_URL}/predict", json=payload).json()
-
-    st.subheader("📌 Risk Assessment")
-    st.metric("Churn Probability", f"{res['churn_probability']*100:.1f}%")
-    st.metric("Risk Level", res["risk_level"])
-
-    st.subheader("🧠 Why this customer is at risk")
-    for reason in res["top_reasons"]:
-        st.write("•", reason)
-
-# ---------------- ACTIONS ----------------
-if res:
-    st.subheader("🎯 Recommended Actions")
-
-    if res["risk_level"] == "High Risk":
-        st.error("Immediate retention action recommended")
-        st.write("• Offer discount or plan upgrade")
-        st.write("• Assign CSM outreach")
-
-    elif res["risk_level"] == "Medium Risk":
-        st.warning("Monitor and engage")
-        st.write("• Product onboarding nudges")
-
+# 2. Fetch data
+try:
+    response = requests.get(f"{API_URL}/customers/risk")
+    
+    # Check if the request was successful
+    if response.status_code == 200:
+        customers = response.json()
+        df = pd.DataFrame(customers)
     else:
-        st.success("Customer healthy")
+        st.error(f"Failed to fetch data. Status code: {response.status_code}")
+        # Stop execution here so we don't use an undefined 'df' later
+        st.stop()
+
+except requests.exceptions.ConnectionError:
+    st.error(f"❌ Could not connect to API at {API_URL}. Is your backend server running?")
+    st.stop()
+
+# --- 🔍 Filters ---
+# Allowing the user to focus on specific risk categories
+risk_filter = st.multiselect(
+    "Filter by Risk Level",
+    ["High Risk", "Medium Risk", "Low Risk"],
+    default=["High Risk", "Medium Risk"]
+)
+
+# Apply the filter to the dataframe
+if not df.empty:
+    df = df[df["risk_level"].isin(risk_filter)]
+
+# --- 📊 Queue Table ---
+st.subheader("Customers Needing Attention")
+
+# Prepare display dataframe (formatting churn prob as %)
+if not df.empty:
+    df_display = df.copy()
+    df_display["churn_probability"] = (df_display["churn_probability"] * 100).round(1).astype(str) + "%"
+
+    st.dataframe(
+        df_display[[
+            "account_id",
+            "risk_level",
+            "churn_probability",
+            "is_trial",
+            "account_age_days"
+        ]],
+        use_container_width=True
+    )
+else:
+    st.info("No customers found.")
+
+st.markdown("---")
+
+# --- 🔎 Customer Drill-Down ---
+# Contextual inspection of a single customer
+st.subheader("Inspect Customer Details")
+
+if not df.empty:
+    selected = st.selectbox(
+        "Select Account ID",
+        df["account_id"].tolist()
+    )
+
+    # Get the single customer row
+    cust = df[df["account_id"] == selected].iloc[0]
+
+    # --- 🧠 Explanation Panel ---
+    st.subheader(f"🧠 Why {selected} is at risk")
+    
+    # Check if list exists to avoid errors
+    if "top_reasons" in cust and cust["top_reasons"]:
+        for reason in cust["top_reasons"]:
+            st.write("•", reason.replace("_", " "))
+    else:
+        st.write("No specific risk factors flagged.")
+
+    # --- 🎯 Recommended Actions ---
+    st.subheader("🎯 Recommended Actions")
+    
+    if cust["risk_level"] == "High Risk":
+        st.error("Immediate intervention required")
+        st.write("• Assign Customer Success Manager")
+        st.write("• Offer onboarding or upgrade assistance")
+        
+    elif cust["risk_level"] == "Medium Risk":
+        st.warning("Monitor and engage")
+        st.write("• Send usage tips")
+        st.write("• Trigger feature adoption nudges")
+        
+    else:
+        st.success("Customer healthy - No immediate action needed")
+
+else:
+    st.info("No customers match the selected filters.")
