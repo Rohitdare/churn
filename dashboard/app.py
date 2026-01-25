@@ -176,14 +176,20 @@ for act in actions_data.get("recommended_actions", []):
         pb_steps = pb.get("steps", [])
         pb_impact = pb.get("expected_impact", "Impact not quantified")
 
-        with st.expander(f"📘 Playbook: {pb_name}"):
-            st.write(f"**Description:** {pb_desc}")
-            st.write(f"**Owner:** {pb_owner}")
-            if pb_steps:
-                st.write("**Steps:**")
-                for step in pb_steps:
-                    st.write("•", step)
-            st.success(f"Expected Impact: {pb_impact}")
+        # Decision summary (always visible)
+st.write(f"**Owner:** {pb_owner}")
+st.write(f"**Expected Impact:** {pb_impact}")
+
+# Execution details (internal SOP)
+with st.expander("🛠️ Execution Playbook (Internal SOP)"):
+    st.write(f"**Playbook:** {pb_name}")
+    st.write(f"**Description:** {pb_desc}")
+
+    if pb_steps:
+        st.write("**Execution Steps:**")
+        for i, step in enumerate(pb_steps, 1):
+            st.write(f"{i}. {step}")
+
 
 st.divider()
 
