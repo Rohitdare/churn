@@ -7,9 +7,9 @@ import plotly.express as px
 # CONFIG
 # ==========================================
 API_URL = "http://localhost:8000"
-
 st.set_page_config(page_title="SaaS Churn Intelligence", layout="wide")
-st.title("📊 SaaS Churn Intelligence")
+
+st.title("📊 SaaS Churn Intelligence Platform")
 
 # ==========================================
 # SAFE API FETCHER
@@ -24,7 +24,7 @@ def fetch_api(endpoint):
         return None
 
 # ==========================================
-# 1. EXECUTIVE METRICS
+# 1. EXECUTIVE OVERVIEW
 # ==========================================
 metrics = fetch_api("metrics")
 
@@ -46,18 +46,17 @@ st.divider()
 customers = fetch_api("customers/risk")
 
 if not customers:
-    st.error("Could not load customer data.")
+    st.error("❌ Could not load customer data.")
     st.stop()
 
 df = pd.DataFrame(customers)
 
 # ==========================================
-# 3. ANALYTICS CHARTS
+# 3. PORTFOLIO ANALYTICS
 # ==========================================
 st.subheader("📊 Portfolio Risk Analytics")
 col1, col2 = st.columns(2)
 
-# --- Risk Distribution ---
 with col1:
     st.markdown("### 📉 Risk Distribution")
     risk_counts = df["risk_level"].value_counts().reset_index()
@@ -76,22 +75,15 @@ with col1:
     )
     st.plotly_chart(fig_risk, use_container_width=True)
 
-# --- Churn Risk by Plan ---
 with col2:
     st.markdown("### 💳 Churn Risk by Plan")
     df_plan = df.copy()
     df_plan["plan"] = "Basic"
-
     if "plan_tier_Pro" in df_plan.columns:
         df_plan.loc[df_plan["plan_tier_Pro"] == 1, "plan"] = "Pro"
         df_plan.loc[df_plan["plan_tier_Enterprise"] == 1, "plan"] = "Enterprise"
 
-    fig_plan = px.box(
-        df_plan,
-        x="plan",
-        y="churn_probability",
-        color="plan"
-    )
+    fig_plan = px.box(df_plan, x="plan", y="churn_probability", color="plan")
     st.plotly_chart(fig_plan, use_container_width=True)
 
 st.divider()
@@ -109,10 +101,6 @@ risk_filter = st.multiselect(
 
 df_filtered = df[df["risk_level"].isin(risk_filter)]
 
-if df_filtered.empty:
-    st.info("No customers match selected filters.")
-    st.stop()
-
 df_display = df_filtered.copy()
 df_display["churn_probability"] = (
     df_display["churn_probability"] * 100
@@ -129,81 +117,103 @@ st.dataframe(
 # 5. CUSTOMER DRILL-DOWN
 # ==========================================
 st.divider()
-st.subheader("🔎 Inspect Customer Details")
+st.subheader("🔎 Inspect Customer")
 
-selected = st.selectbox(
-    "Select Account ID",
-    df_filtered["account_id"].tolist()
-)
-
+selected = st.selectbox("Select Account ID", df_filtered["account_id"].tolist())
 cust = df_filtered[df_filtered["account_id"] == selected].iloc[0]
 
 col_left, col_right = st.columns(2)
 
-# --- Reasons & Actions ---
 with col_left:
     st.markdown(f"### 🧠 Why `{selected}` is at risk")
+    for r in cust.get("top_reasons", []):
+        st.write(f"• {r.replace('_', ' ')}")
 
-    if cust.get("top_reasons"):
-        for r in cust["top_reasons"]:
-            st.write(f"• {r.replace('_', ' ')}")
-    else:
-        st.write("No dominant risk drivers detected.")
-
-    st.markdown("### 🎯 Immediate Recommendation")
-    if cust["risk_level"] == "High Risk":
-        st.error("Immediate outreach required. Schedule a success call.")
-    elif cust["risk_level"] == "Medium Risk":
-        st.warning("Send targeted engagement and feature education.")
-    else:
-        st.success("Customer health is stable.")
-
-# --- Risk Trend ---
 with col_right:
     st.markdown("### 📈 Risk Trend (30 Days)")
-    history_data = fetch_api(f"customers/{selected}/risk-history")
-
-    if history_data and "risk_history" in history_data:
-        hist_df = pd.DataFrame(history_data["risk_history"])
-
-        fig_trend = px.line(
-            hist_df,
-            x="date",
-            y="churn_probability",
-            markers=True
-        )
+    history = fetch_api(f"customers/{selected}/risk-history")
+    if history:
+        hist_df = pd.DataFrame(history["risk_history"])
+        fig_trend = px.line(hist_df, x="date", y="churn_probability", markers=True)
         fig_trend.update_yaxes(range=[0, 1])
         st.plotly_chart(fig_trend, use_container_width=True)
 
-        delta = hist_df["churn_probability"].iloc[-1] - hist_df["churn_probability"].iloc[0]
-        if delta > 0.15:
-            st.error("🚨 Risk increasing rapidly")
-        elif delta > 0.05:
-            st.warning("⚠️ Risk trending upward")
-        elif delta < -0.05:
-            st.success("✅ Risk improving")
-        else:
-            st.info("ℹ️ Risk stable")
-    else:
-        st.write("No risk history available.")
+st.divider()
 
 # ==========================================
-# 6. NEXT BEST ACTION ENGINE
+# 6. NEXT BEST ACTION ENGINE (ENTERPRISE SAFE)
 # ==========================================
-st.divider()
-st.subheader("🎯 Next Best Actions")
+st.subheader("🎯 Recommended Actions & Playbooks")
 
 actions_data = fetch_api(f"customers/{selected}/next-actions")
 
-if actions_data:
-    st.caption(f"Risk Trend: {actions_data.get('risk_trend', 'Unknown')}")
+if not actions_data:
+    st.error("❌ Could not load action recommendations.")
+    st.stop()
 
-    for act in actions_data.get("recommended_actions", []):
-        if act["priority"] == "Urgent":
-            st.error(f"🔥 **{act['action']}** — {act['reason']}")
-        elif act["priority"] == "High":
-            st.warning(f"⚠️ **{act['action']}** — {act['reason']}")
-        else:
-            st.info(f"ℹ️ **{act['action']}** — {act['reason']}")
-else:
-    st.error("Could not load recommended actions.")
+st.caption(f"Risk Trend: {actions_data.get('risk_trend', 'Unknown')}")
+
+for act in actions_data.get("recommended_actions", []):
+    priority = act.get("priority", "Low")
+    action_name = act.get("action", "Unnamed Action")
+    why = act.get("why", "No explanation provided")
+
+    if priority == "Urgent":
+        st.error(f"🔥 **{action_name}**")
+    elif priority == "High":
+        st.warning(f"⚠️ **{action_name}**")
+    else:
+        st.info(f"ℹ️ **{action_name}**")
+
+    st.write(f"**Why:** {why}")
+
+    pb = act.get("playbook")
+
+    if isinstance(pb, dict):
+        pb_name = pb.get("name", "Unnamed Playbook")
+        pb_desc = pb.get("description", "No description provided")
+        pb_owner = pb.get("owner", "Unassigned")
+        pb_steps = pb.get("steps", [])
+        pb_impact = pb.get("expected_impact", "Impact not quantified")
+
+        with st.expander(f"📘 Playbook: {pb_name}"):
+            st.write(f"**Description:** {pb_desc}")
+            st.write(f"**Owner:** {pb_owner}")
+            if pb_steps:
+                st.write("**Steps:**")
+                for step in pb_steps:
+                    st.write("•", step)
+            st.success(f"Expected Impact: {pb_impact}")
+
+st.divider()
+
+# ==========================================
+# 7. AGENT SIMULATION
+# ==========================================
+st.header("🤖 AI Retention Agent – Today’s Action Plan")
+
+if st.button("Simulate Agent Plan"):
+    plan = fetch_api("agent/daily-plan")
+
+    if not plan:
+        st.error("❌ Agent simulation failed.")
+        st.stop()
+
+    summary = plan["plan"]["summary"]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Urgent Accounts", summary["urgent_customers"])
+    c2.metric("Bulk Engagement", summary["bulk_customers"])
+    c3.metric("Deferred", summary["deferred_customers"])
+
+    st.subheader("🚨 Priority Actions")
+    for act in plan["plan"]["priority_actions"]:
+        st.error(
+            f"🔥 {act['account_id']} ({act['churn_probability']*100:.1f}%)\n\n"
+            f"Action: {act['recommended_action']}"
+        )
+
+    st.subheader("📣 Bulk Actions")
+    for act in plan["plan"]["bulk_actions"]:
+        st.warning(f"{act['action']} → {act['customer_count']} customers")
+
+    st.info(plan["note"])
