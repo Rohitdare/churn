@@ -98,50 +98,7 @@ graph TD
 
 ---
 
-## 🚀 Quick Start
 
-### Prerequisites
-
-```bash
-# Required
-- Python 3.10+
-- Git
-```
-
-### ⚡ Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/saas-churn-ai.git
-cd saas-churn-ai
-
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate    # Mac/Linux
-# venv\Scripts\activate     # Windows
-
-# 3. Install dependencies
-pip install -r requirements.txt
-```
-
-### 🎯 Run the Application
-
-To launch the **Interactive Dashboard**:
-
-```bash
-streamlit run dashboard/app.py
-```
-
-### 📓 Train Models
-
-To retrain or update the churn prediction models:
-
-```bash
-cd notebooks
-# Run: 03_model_training.ipynb
-```
-
----
 
 ## 🗂️ Project Structure
 
@@ -280,6 +237,8 @@ ROI per Saved Customer: 60x
 Monthly At-Risk Users: 150
 Saved via Platform: 45 (30% save rate)
 Annual Revenue Protected: $540,000
+
+All just simulated for now
 ```
 
 ### ⏱️ Operational Efficiency
@@ -394,17 +353,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
   <sub>Turning churn predictions into revenue protection</sub>
 </p>
 
----
 
-## 🤝 Contributing
-
-We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## 📞 Support
-
-- **Documentation:** [Full Docs](https://docs.yourproject.com)
-- **Issues:** [GitHub Issues](https://github.com/yourusername/saas-churn-ai/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/saas-churn-ai/discussions)
 
 ---
 
