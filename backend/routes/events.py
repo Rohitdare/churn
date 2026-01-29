@@ -16,7 +16,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("")
+@router.post("/")
 def ingest_event(
     event: EventCreate,
     company_id: str = Depends(verify_api_key),
