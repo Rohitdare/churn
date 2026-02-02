@@ -157,3 +157,134 @@ def customer_intelligence(
         "reasons": reasons,
         "recommended_actions": actions
     }
+
+
+@router.get("/risk-queue")
+def get_risk_queue(
+    company_id: str = Depends(verify_api_key)
+):
+    from risk_queue import build_risk_queue
+    queue = build_risk_queue()
+
+    return {
+        "company_id": company_id,
+        "queue": queue[:50]  # top 50 only
+    }
+
+
+@router.get("/shap/{customer_id}")
+def shap_explanation(
+    customer_id: str,
+    company_id: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    query = text("""
+        SELECT
+            feature,
+            shap_value
+        FROM churn_shap_explanations
+        WHERE company_id = :company_id
+          AND customer_id = :customer_id
+        ORDER BY ABS(shap_value) DESC
+        LIMIT 5;
+    """)
+
+    rows = db.execute(query, {
+        "company_id": company_id,
+        "customer_id": customer_id
+    }).fetchall()
+
+    return {
+        "customer_id": customer_id,
+        "shap_explanations": [
+            {
+                "feature": r.feature,
+                "impact": round(float(r.shap_value), 4),
+                "direction": "increases churn" if r.shap_value > 0 else "reduces churn"
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/playbooks/{customer_id}")
+def get_playbooks(
+    customer_id: str,
+    company_id: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    # Get risk
+    risk_row = db.execute(text("""
+        SELECT churn_risk
+        FROM churn_predictions
+        WHERE company_id = :company_id
+          AND customer_id = :customer_id
+        ORDER BY prediction_date DESC
+        LIMIT 1;
+    """), {"company_id": company_id, "customer_id": customer_id}).fetchone()
+
+    # Get SHAP
+    shap_rows = db.execute(text("""
+        SELECT feature, shap_value
+        FROM churn_shap_explanations
+        WHERE company_id = :company_id
+          AND customer_id = :customer_id
+        ORDER BY ABS(shap_value) DESC
+        LIMIT 5;
+    """), {"company_id": company_id, "customer_id": customer_id}).fetchall()
+
+    shap_explanations = [
+        {
+            "feature": r.feature,
+            "impact": float(r.shap_value),
+            "direction": "increases churn" if r.shap_value > 0 else "reduces churn"
+        }
+        for r in shap_rows
+    ]
+
+    from playbooks.engine import generate_playbook
+
+    playbooks = generate_playbook(
+        customer_risk=risk_row.churn_risk,
+        shap_explanations=shap_explanations
+    )
+
+    return {
+        "customer_id": customer_id,
+        "risk": risk_row.churn_risk,
+        "playbooks": playbooks
+    }
+
+
+@router.get("/agent/logs")
+def agent_logs(
+    company_id: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    rows = db.execute(text("""
+        SELECT
+            customer_id,
+            action,
+            execution_mode,
+            urgency,
+            status,
+            executed_at
+        FROM retention_agent_logs
+        WHERE company_id = :company_id
+        ORDER BY executed_at DESC
+        LIMIT 50;
+    """), {"company_id": company_id}).fetchall()
+
+    return {
+        "logs": [
+            {
+                "customer_id": r.customer_id,
+                "action": r.action,
+                "execution_mode": r.execution_mode,
+                "urgency": r.urgency,
+                "status": r.status,
+                "executed_at": r.executed_at.isoformat()
+            }
+            for r in rows
+        ]
+    }
