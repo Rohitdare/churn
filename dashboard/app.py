@@ -3,12 +3,12 @@ from ui.common import ROLE_VIEWS
 
 # ---------------- CONFIG ----------------
 st.set_page_config(
-    page_title="SaaS Churn Intelligence",
+    page_title="RetainAI",
     layout="wide"
 )
 
 # ---------------- HEADER ----------------
-st.title("📉 SaaS Churn Intelligence Platform")
+st.title("📉 RetainAI:Predictive Customer Intelligence")
 st.caption("Predict • Explain • Act")
 
 # ---------------- ROLE SELECTION ----------------
