@@ -46,3 +46,6 @@ if __name__ == "__main__":
     q = build_risk_queue()
     for i in q[:5]:
         print(i)
+
+        #risk queue is optimized
+        
